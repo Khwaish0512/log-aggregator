@@ -24,6 +24,14 @@ public class AlertEngine {
         this.threshold = threshold;
     }
 
+    public int getThreshold() {
+        return threshold;
+    }
+
+    public long getWindowMillis() {
+        return windowMillis;
+    }
+
     /**
      * Call this every time an ERROR-level log arrives for a given service.
      * Returns true if this call caused the threshold to be breached
