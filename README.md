@@ -48,7 +48,15 @@ Then:
 docker-compose up -d
 ```
 
-**2. Run the app:**
+**2. Create the Kafka topic** (auto-creation is disabled on the broker, so this is a required one-time step):
+
+```bash
+docker exec -it kafka /opt/kafka/bin/kafka-topics.sh --create \
+  --topic application-logs --bootstrap-server localhost:9092 \
+  --partitions 3 --replication-factor 1
+```
+
+**3. Run the app:**
 
 ```bash
 ./mvnw spring-boot:run
@@ -56,7 +64,7 @@ docker-compose up -d
 
 The app starts on `http://localhost:8080`.
 
-**3. Send a test log:**
+**4. Send a test log:**
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/logs \
@@ -79,6 +87,22 @@ Alerting thresholds are configurable in `application.properties`:
 alert.window-ms=30000   # sliding window size in ms
 alert.threshold=5       # number of errors within the window that triggers an alert
 ```
+
+## Load Testing
+
+A custom multithreaded Java load generator (`ExecutorService` + `HttpClient`, no external dependencies) was built to simulate concurrent traffic from multiple services and validate the pipeline under real load:
+
+| Concurrent threads | Total requests | Failures | Throughput | Avg latency |
+|---|---|---|---|---|
+| 20 | 2,000 | 0 | 533 req/s | 33 ms |
+| 100 | 20,000 | 0 | 1,496 req/s | 66 ms |
+| 500 | 50,000 | 0 | 2,842 req/s | 171 ms |
+
+Every run completed with zero failed requests and zero data loss (verified against MySQL row counts and Kafka consumer offsets after each test).
+
+Under sustained load, consumer lag reached roughly 8,500 unconsumed messages, because the Kafka listener container was running with a concurrency of 1 despite the topic being partitioned into 3. This was fixed by setting the listener's concurrency to match the partition count — since the topic was already correctly partitioned from the start, the fix required a one-line config change with no infrastructure migration.
+
+JDBC batch inserts were confirmed active via Hibernate's own startup log (`HHH100501: Automatic JDBC statement batching enabled`), with bursts of over 1,500 logs flushed to MySQL in a single batch during load testing.
 
 ## Known Limitations
 
